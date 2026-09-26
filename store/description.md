@@ -45,7 +45,7 @@ Rename selected layers to a consistent naming convention in one go — with firs
 한글, 한국어, rename, naming, naming convention, camelCase, snake_case, layer, cleanup, organize
 
 ## 지원 연락처
-(등록 화면에서 필수. 이메일 또는 GitHub 이슈 주소를 넣어주세요.)
+https://github.com/Hanee93/figma-case-renamer/issues
 
 ## 이미지
 - 아이콘: `store/icon-128.png` (128×128)
