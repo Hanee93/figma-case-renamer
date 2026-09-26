@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>레이어이름 정리 데모</title>
+<style>
+  :root { color-scheme: light dark; --border: #d0d0d0; --muted: #777; --brand: #0d99ff; --brand-bg: #e5f4ff; --input-bg: #f5f5f5; }
+  @media (prefers-color-scheme: dark) { :root { --border: #444; --muted: #999; --brand-bg: #10314a; --input-bg: #2a2a2a; } }
+  body { margin: 0; padding: 24px 16px; font: 14px/1.5 Inter, system-ui, sans-serif; max-width: 900px; margin-inline: auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 16px 0 8px; display: flex; justify-content: space-between; }
+  h2 span { text-transform: none; letter-spacing: 0; font-weight: normal; }
+  textarea { width: 100%; box-sizing: border-box; height: 200px; font: 13px/1.6 ui-monospace, monospace; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: inherit; }
+  .styles { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .styles label { display: flex; flex-direction: column; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+  .styles label:has(input:checked) { border-color: var(--brand); background: var(--brand-bg); }
+  .styles input { display: none; }
+  .styles b { font-family: ui-monospace, monospace; font-size: 13px; }
+  .styles small { color: var(--muted); font-family: ui-monospace, monospace; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+  .box { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  #dict div { display: grid; grid-template-columns: 1fr 1.6fr 40px; gap: 8px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  #dict div:last-child { border-bottom: 0; }
+  #dict input { font: 13px ui-monospace, monospace; padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--input-bg); color: inherit; min-width: 0; }
+  #dict input:focus { outline: 2px solid var(--brand); border-color: transparent; }
+  #dict .count { color: var(--muted); text-align: right; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font: 13px/1.5 ui-monospace, monospace; }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; word-break: break-all; }
+  td.arrow { color: var(--muted); width: 20px; }
+  tr.same td { opacity: .5; }
+  tr.skip td:last-child { color: var(--muted); font-style: italic; }
+  .note, .empty { font-size: 12px; color: var(--muted); }
+  .empty { padding: 14px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>레이어이름 정리 데모</h1>
+  <p class="sub">Figma 플러그인과 같은 변환 로직입니다. 레이어 이름을 넣고, 모인 한글 단어에 영어를 적어보세요.</p>
+
+  <div class="grid">
+    <div>
+      <h2>레이어 이름 (한 줄에 하나)</h2>
+      <textarea id="input">로그인 버튼
+확인 버튼
+취소버튼
+메인 Header
+Frame 12
+Frame 87
+Rectangle 3
+Button 2
+HTMLParser
+Button / Primary Large
+아이콘/닫기 버튼
+user_profile-card
+입력 필드</textarea>
+
+      <h2>한글 단어 → 영어 <span id="dictHint"></span></h2>
+      <div class="box" id="dict"></div>
+      <p class="note">같은 단어는 한 번만 나오고, 입력하면 그 단어가 들어간 모든 이름에 한 번에 적용됩니다. 비워두면 한글이 그대로 남습니다. "취소버튼"처럼 붙어 있는 이름은 "취소", "버튼"을 따로 적으면 나눠서 적용돼요.</p>
+
+      <h2>케이스</h2>
+      <div class="styles" id="styles"></div>
+
+      <h2>끝 숫자 정리</h2>
+      <div class="row"><select id="numbers"></select></div>
+      <label class="row"><input type="checkbox" id="defaultOnly" checked /> Figma 기본 이름(Frame, Group, Rectangle…)에만</label>
+
+      <h2>옵션</h2>
+      <label class="row"><input type="checkbox" id="slash" checked /> "/" 그룹 구분 유지</label>
+    </div>
+
+    <div>
+      <h2>결과</h2>
+      <div class="box"><table id="out"></table></div>
+      <p class="note">회색 줄은 이미 같은 이름이라 변경 없음. 플러그인에서는 이 목록이 미리보기로 뜨고 "적용"을 눌러야 실제로 바뀝니다.</p>
+    </div>
+  </div>
+
+<script src="lib.js?v=2"></script>
+<script>
+  const { convertNames, collectHangulWords, CASE_STYLES, NUMBER_MODES } = window.CaseRenamer;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  let dictionary = { 로그인: 'login', 버튼: 'button' }; // 데모용 초기값
+  let renderedWords = '';
+
+  $('numbers').innerHTML = NUMBER_MODES.map((m) => `<option value="${m.value}">${m.label} (${m.example})</option>`).join('');
+  $('styles').innerHTML = CASE_STYLES.map((s, i) => `
+    <label><input type="radio" name="style" value="${s.value}" ${i === 0 ? 'checked' : ''}/><b>${s.label}</b><small>${s.example}</small></label>`).join('');
+
+  const names = () => $('input').value.split('\n').map((s) => s.trim()).filter(Boolean);
+  // 플러그인과 동일하게 variant 이름(Property=Value)은 항상 건너뛴다
+  const isVariant = (n) => n.includes('=');
+
+  function renderDict() {
+    const words = collectHangulWords(names().filter((n) => !isVariant(n)));
+    const filled = words.filter((w) => dictionary[w.word]?.trim()).length;
+    $('dictHint').textContent = words.length ? `${filled}/${words.length} 입력됨` : '';
+    const key = words.map((w) => w.word).join('\n');
+    if (key === renderedWords) return;
+    renderedWords = key;
+    $('dict').innerHTML = words.length === 0
+      ? '<div class="empty">한글이 없어요</div>'
+      : words.map((w) => `
+        <div>
+          <span>${esc(w.word)}</span>
+          <input data-word="${esc(w.word)}" value="${esc(dictionary[w.word] ?? '')}" placeholder="영어 입력" spellcheck="false" />
+          <span class="count">×${w.count}</span>
+        </div>`).join('');
+  }
+
+  function renderOut() {
+    const opts = {
+      style: document.querySelector('input[name=style]:checked').value,
+      dictionary,
+      preserveSlash: $('slash').checked,
+      numbers: $('numbers').value,
+      defaultNamesOnly: $('defaultOnly').checked,
+    };
+    const all = names();
+    const active = all.filter((n) => !isVariant(n));
+    const converted = new Map(convertNames(active, opts).map((after, i) => [active[i], after]));
+    $('out').innerHTML = all.map((n) => {
+      if (isVariant(n)) return `<tr class="skip"><td>${esc(n)}</td><td class="arrow">→</td><td>(건너뜀: variant 이름)</td></tr>`;
+      const after = converted.get(n);
+      return `<tr class="${after === n ? 'same' : ''}"><td>${esc(n)}</td><td class="arrow">→</td><td>${esc(after)}</td></tr>`;
+    }).join('');
+  }
+
+  function render() { renderDict(); renderOut(); }
+
+  $('dict').addEventListener('input', (e) => {
+    if (!e.target.dataset?.word) return;
+    dictionary = { ...dictionary, [e.target.dataset.word]: e.target.value };
+    render();
+  });
+  $('dict').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const inputs = [...$('dict').querySelectorAll('input')];
+    const i = inputs.indexOf(e.target);
+    if (i >= 0 && i + 1 < inputs.length) inputs[i + 1].focus();
+  });
+  $('input').addEventListener('input', render);
+  document.body.addEventListener('change', render);
+  render();
+</script>
+</body>
+</html>
